@@ -1,0 +1,195 @@
+#!/usr/bin/env node
+
+const UltimateHTMLToPDFConverter = require('./src/converter');
+const fs = require('fs-extra');
+const path = require('path');
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+
+if (args.includes('--help') || args.includes('-h') || args.length === 0) {
+    console.log(`
+🚀 Ultimate HTML to PDF Converter - CLI
+
+Usage: node cli.js <input> <output> [options]
+
+Arguments:
+  input     HTML file path, URL, or '-' for stdin
+  output    Output PDF file path
+
+Options:
+  --format <format>     Page format (A4, A3, Letter, Legal, Tabloid) [default: A4]
+  --landscape          Use landscape orientation
+  --margin <size>      Margin size (small, medium, large) [default: medium]
+  --scale <scale>      Scale factor (0.8-1.2) [default: 1.0]
+  --letterhead         Add letterhead to all pages (trivanta or dazzlo) [requires password]
+  --letterhead-type    Letterhead type: trivanta (default) or dazzlo
+  --password <pwd>     Password for letterhead access (required: 102005)
+  --help, -h          Show this help message
+
+Examples:
+  # Convert HTML file
+  node cli.js input.html output.pdf
+
+  # Convert with letterhead
+  node cli.js input.html output.pdf --letterhead
+
+  # Convert from URL
+  node cli.js https://example.com output.pdf --format A3 --landscape
+
+  # Convert from stdin
+  echo "<html><body><h1>Hello</h1></body></html>" | node cli.js - output.pdf
+
+  # Convert with custom options
+  node cli.js input.html output.pdf --format Letter --margin large --scale 1.1 --letterhead
+`);
+    process.exit(0);
+}
+
+async function main() {
+    try {
+        const input = args[0];
+        const output = args[1];
+        
+        if (!input || !output) {
+            console.error('❌ Error: Input and output paths are required');
+            console.log('Use --help for usage information');
+            process.exit(1);
+        }
+
+        // Parse options
+        const options = {
+            format: 'A4',
+            landscape: false,
+            margin: { top: '12mm', right: '10mm', bottom: '14mm', left: '10mm' },
+            scale: 1.0,
+            letterhead: false,
+            password: null
+        };
+
+        for (let i = 2; i < args.length; i++) {
+            const arg = args[i];
+            
+            switch (arg) {
+                case '--format':
+                    options.format = args[++i];
+                    break;
+                case '--landscape':
+                    options.landscape = true;
+                    break;
+                case '--margin':
+                    const marginSize = args[++i];
+                    switch (marginSize) {
+                        case 'small':
+                            options.margin = { top: '10mm', right: '8mm', bottom: '12mm', left: '8mm' };
+                            break;
+                        case 'large':
+                            options.margin = { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' };
+                            break;
+                        default:
+                            options.margin = { top: '12mm', right: '10mm', bottom: '14mm', left: '10mm' };
+                    }
+                    break;
+                case '--scale':
+                    options.scale = parseFloat(args[++i]);
+                    break;
+                case '--letterhead':
+                    options.letterhead = true;
+                    break;
+                case '--letterhead-type':
+                    options.letterheadType = args[++i];
+                    break;
+                case '--password':
+                    options.password = args[++i];
+                    break;
+                default:
+                    console.warn(`⚠️  Warning: Unknown option ${arg}`);
+            }
+        }
+
+        console.log('🚀 Initializing Ultimate HTML to PDF Converter...');
+        
+        // Initialize converter
+        const converter = new UltimateHTMLToPDFConverter();
+        await converter.initialize();
+        
+        console.log('✅ Ultimate HTML to PDF Converter initialized successfully');
+
+        let htmlContent;
+
+        // Read input
+        if (input === '-') {
+            // Read from stdin
+            console.log('📖 Reading HTML from stdin...');
+            htmlContent = await new Promise((resolve) => {
+                let data = '';
+                process.stdin.on('data', chunk => data += chunk);
+                process.stdin.on('end', () => resolve(data));
+            });
+        } else if (input.startsWith('http://') || input.startsWith('https://')) {
+            // Fetch from URL
+            console.log(`🌐 Fetching HTML from URL: ${input}`);
+            const page = await converter.browser.newPage();
+            await page.goto(input, { waitUntil: 'networkidle0' });
+            htmlContent = await page.content();
+            await page.close();
+        } else {
+            // Read from file
+            console.log(`📁 Reading HTML file: ${input}`);
+            if (!await fs.pathExists(input)) {
+                throw new Error(`File not found: ${input}`);
+            }
+            htmlContent = await fs.readFile(input, 'utf8');
+        }
+
+        // Ensure output directory exists
+        await fs.ensureDir(path.dirname(output));
+
+        // Check password for letterhead access
+        if (options.letterhead) {
+            if (!options.password) {
+                throw new Error('Password is required for letterhead access. Use --password option.');
+            }
+            if (options.password !== '102005') {
+                throw new Error('Invalid password for letterhead access.');
+            }
+        }
+
+        console.log('🔄 Converting HTML to PDF...');
+        
+        // Convert to PDF
+        const result = await converter.convertHTMLToPDF(htmlContent, output, options);
+        
+        console.log('✅ PDF generated successfully:', output);
+        console.log('✅ Conversion completed successfully!');
+        console.log(`📄 Output: ${path.basename(output)}`);
+        console.log(`📊 File size: ${(result.fileSize / 1024).toFixed(2)} KB`);
+        console.log(`📑 Pages: ${result.pageCount}`);
+        
+        if (options.letterhead) {
+            const letterheadType = options.letterheadType || 'trivanta';
+            console.log(`🏢 Letterhead: ${letterheadType === 'dazzlo' ? 'Dazzlo Enterprises' : 'Trivanta Edge'} branding applied`);
+        }
+
+        // Clean up
+        await converter.close();
+
+    } catch (error) {
+        console.error('❌ Conversion failed:', error.message);
+        process.exit(1);
+    }
+}
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+    console.log('\n👋 Conversion cancelled by user. Goodbye!');
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('\n👋 Conversion terminated. Goodbye!');
+    process.exit(0);
+});
+
+// Run the converter
+main();
