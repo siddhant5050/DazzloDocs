@@ -3,7 +3,7 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs-extra');
-const UltimateHTMLToPDFConverter = require('./src/converter');
+const UltimateHTMLToPDFConverter = require('./converter');
 
 // Debug environment variables
 console.log('🔍 Environment variables:');
@@ -12,7 +12,7 @@ console.log('PUPPETEER_SKIP_CHROMIUM_DOWNLOAD:', process.env.PUPPETEER_SKIP_CHRO
 console.log('PUPPETEER_EXECUTABLE_PATH:', process.env.PUPPETEER_EXECUTABLE_PATH);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
@@ -20,13 +20,13 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/assets', express.static(path.join(__dirname)));
+app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use('/assets', express.static(path.join(__dirname, '..')));
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        const uploadDir = path.join(__dirname, 'uploads');
+        const uploadDir = path.join(__dirname, '..', 'uploads');
         fs.ensureDirSync(uploadDir);
         cb(null, uploadDir);
     },
@@ -73,7 +73,7 @@ async function initializeConverter() {
 
 // Root route - serve the main application
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
 // Health check endpoint
@@ -86,7 +86,7 @@ app.get('/health', (req, res) => {
         converter: converter ? 'initialized' : 'not initialized',
         chrome: process.env.PUPPETEER_EXECUTABLE_PATH || 'auto-detect',
         memory: process.memoryUsage(),
-        version: require('./package.json').version
+        version: require('../package.json').version
     };
     
     res.json(health);
@@ -95,7 +95,7 @@ app.get('/health', (req, res) => {
 // Download endpoint for generated PDFs
 app.get('/download/:filename', (req, res) => {
     const filename = req.params.filename;
-    const filePath = path.join(__dirname, 'outputs', filename);
+    const filePath = path.join(__dirname, '..', 'outputs', filename);
     
     if (fs.existsSync(filePath)) {
         res.download(filePath, filename, (err) => {
@@ -143,7 +143,7 @@ app.post('/convert/html', async (req, res) => {
         }
 
         const filename = `dazzlodocs_${Date.now()}.pdf`;
-        const outputPath = path.join(__dirname, 'outputs', filename);
+        const outputPath = path.join(__dirname, '..', 'outputs', filename);
         await fs.ensureDir(path.dirname(outputPath));
 
         const options = {
@@ -211,7 +211,7 @@ app.post('/convert/file', upload.single('htmlFile'), async (req, res) => {
 
         const inputPath = req.file.path;
         const filename = `dazzlodocs_${Date.now()}.pdf`;
-        const outputPath = path.join(__dirname, 'outputs', filename);
+        const outputPath = path.join(__dirname, '..', 'outputs', filename);
         
         await fs.ensureDir(path.dirname(outputPath));
 
@@ -296,7 +296,7 @@ app.post('/convert/url', async (req, res) => {
         await page.close();
 
         const filename = `dazzlodocs_${Date.now()}.pdf`;
-        const outputPath = path.join(__dirname, 'outputs', filename);
+        const outputPath = path.join(__dirname, '..', 'outputs', filename);
         await fs.ensureDir(path.dirname(outputPath));
 
         const options = {
@@ -384,7 +384,7 @@ app.get('/options', (req, res) => {
                 }
             }
         },
-        version: require('./package.json').version
+        version: require('../package.json').version
     });
 });
 
@@ -418,12 +418,12 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // Start server
-app.listen(PORT, async () => {
+app.listen(PORT, '0.0.0.0', async () => {
     console.log('🚀 DazzloDocs Server Starting...');
     console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🌐 Server running on port ${PORT}`);
-    console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-    console.log(`🎨 Web interface: http://localhost:${PORT}`);
+    console.log(`🔗 Health check: http://0.0.0.0:${PORT}/health`);
+    console.log(`🎨 Web interface: http://0.0.0.0:${PORT}`);
     
     // Initialize converter after server starts
     await initializeConverter();
