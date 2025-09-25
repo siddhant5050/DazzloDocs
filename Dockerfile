@@ -1,7 +1,6 @@
-# Use official Node.js runtime as base image
 FROM node:18-slim
 
-# Install dependencies for Puppeteer
+# Install Chrome dependencies
 RUN apt-get update && apt-get install -y \
     wget \
     ca-certificates \
@@ -31,29 +30,6 @@ RUN apt-get update && apt-get install -y \
     libvulkan1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app directory
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Install app dependencies
-RUN npm ci --only=production && npm cache clean --force
-
-# Create necessary directories
-RUN mkdir -p public uploads outputs temp src
-
-# Copy application files
-COPY . .
-
-# Copy logo files to root directory
-COPY public/trivanta.png ./trivanta.png
-COPY public/logo.png ./logo.png
-
-# Set environment variables for Puppeteer
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
-
 # Install Chrome
 RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
     && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list' \
@@ -61,21 +37,30 @@ RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user to run the app
+WORKDIR /app
+
+# Copy package files
+COPY package.json ./
+
+# Install dependencies
+RUN npm install --production
+
+# Create directories and copy files
+RUN mkdir -p public uploads outputs temp src
+COPY . .
+
+# Set environment variables
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+
+# Create non-root user
 RUN groupadd -r pptruser && useradd -r -g pptruser -G audio,video pptruser \
     && mkdir -p /home/pptruser/Downloads \
     && chown -R pptruser:pptruser /home/pptruser \
     && chown -R pptruser:pptruser /app
 
-# Run as non-root user
 USER pptruser
 
-# Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD node -e "const http = require('http'); const options = { host: 'localhost', port: 3000, path: '/health', timeout: 2000 }; const request = http.get(options, (res) => { console.log('Health check passed'); process.exit(0); }); request.on('error', (err) => { console.log('Health check failed'); process.exit(1); }); request.end();"
-
-# Start the application
 CMD ["npm", "start"]
