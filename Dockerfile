@@ -1,8 +1,9 @@
 FROM node:18-slim
 
-# Install Chrome dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     wget \
+    gnupg \
     ca-certificates \
     fonts-liberation \
     libasound2 \
@@ -14,7 +15,6 @@ RUN apt-get update && apt-get install -y \
     libdrm2 \
     libgbm1 \
     libgtk-3-0 \
-    libgtk-4-1 \
     libnspr4 \
     libnss3 \
     libwayland-client0 \
@@ -26,23 +26,19 @@ RUN apt-get update && apt-get install -y \
     libxkbcommon0 \
     libxrandr2 \
     xdg-utils \
-    libu2f-udev \
-    libvulkan1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chrome
-RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list' \
+# Install Chrome using new method
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/googlechrome-linux-keyring.gpg \
+    && sh -c 'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/googlechrome-linux-keyring.gpg] https://dl-ssl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
     && apt-get update \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy package files
+# Copy and install dependencies
 COPY package.json ./
-
-# Install dependencies
 RUN npm install --production
 
 # Create directories and copy files
@@ -55,8 +51,6 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
 # Create non-root user
 RUN groupadd -r pptruser && useradd -r -g pptruser -G audio,video pptruser \
-    && mkdir -p /home/pptruser/Downloads \
-    && chown -R pptruser:pptruser /home/pptruser \
     && chown -R pptruser:pptruser /app
 
 USER pptruser
